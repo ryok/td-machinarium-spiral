@@ -11,6 +11,7 @@ r/TouchDesigner の「[Audiovisual - a Tribute to Machinarium](https://www.reddi
 | ファイル | 役割 |
 |---|---|
 | `scripts/build_spiral.py` | `/project1` に `msp_*` ノード 20 個を組む。何度流しても同じネットワークになる |
+| `scripts/build_audio.py` | 音反応（`msp_aud*` / `msp_drive`）。`build_spiral` の後に実行 |
 | `scripts/spiral_geo.py` | Script SOP のコールバック。帯・網目・ほつれ・ガイド線を毎フレーム生成 |
 | `scripts/td_build.py` | ノード構築ヘルパ（td-organic-patterns の写し） |
 
@@ -31,9 +32,31 @@ TouchDesigner（099.2023.12230 で確認）の Textport で:
 ```python
 P='/path/to/td-machinarium-spiral/scripts/build_spiral.py'
 g=dict(globals()); g['__file__']=P; exec(open(P).read(), g); g['build_spiral']()
+
+# 音反応（build_spiral の後。build_spiral を流し直すと msp_* ごと消えるので、こちらも再実行）
+P='/path/to/td-machinarium-spiral/scripts/build_audio.py'
+g=dict(globals()); g['__file__']=P; exec(open(P).read(), g)
+g['build_audio']()                                  # 既定の音声入力
+g['build_audio'](device='BlackHole2ch_UID')         # Ableton 等を BlackHole 経由で
+g['build_audio'](audio_file='/path/to/song.mp3')    # ファイルをループ再生
 ```
 
-出力は `/project1/msp_out`。手元の Mac で 60fps（Script SOP 約15ms、Render 約1ms）。
+出力は `/project1/msp_out`。手元の Mac で約 60fps（音反応込みで Script SOP 約16ms、Render 約1ms）。Script SOP が 1 フレームの予算（16.7ms）ぎりぎりなので、形を増やすなら `_ribbon` の分割数 `n` を減らす。
+
+## 音反応
+
+![左: 静か（低域 0.13） 右: キック（低域 1.5）](reference/audio_quiet_vs_kick.png)
+
+| 帯域 | 映像 |
+|---|---|
+| 低域 | 下の大きい輪ほど強く、弧が開いて先頭が明るくなる。大きいブラーも膨らむ |
+| 高域 | 上の小さい輪ほど強く同じ反応。三角形のほつれが外へ広がる |
+| 中域 | 回転の速さ（`1 + 0.8×中域` を Speed CHOP で積分した時刻を使う） |
+
+- 各帯域は「今の値 ÷ (直近6秒平均×2 + 下駄)」の自動ゲインで 0〜1.5 にそろえる（曲ごとの音量差を吸収）
+- Audio Spectrum は `frequencylog=0`、Trim は `relative='abs'`。既定のままだと低中高がほぼ同じ値になる
+- 回転の速さを `absTime × 係数` で変えると、係数が変わった瞬間に位置が飛ぶ。速さを積分した時刻を使う
+- ハウスのデモ曲で 478 フレーム計測: 低域 p5=0.07 / p50=0.39 / p95=1.5。キックごとに 0.1 前後と 1.5 を往復する
 
 ## 調整の勘所
 
@@ -46,4 +69,5 @@ g=dict(globals()); g['__file__']=P; exec(open(P).read(), g); g['build_spiral']()
 
 ## 今後
 
-- 音反応（低域で輪の開閉、音量でブルーム）
+- 実曲（Floex 系の静かな曲、自作曲）での反応量の調整
+- 録画（Movie File Out）

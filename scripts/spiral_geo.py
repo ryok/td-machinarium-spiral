@@ -22,8 +22,8 @@ COOL = (0.62, 0.6, 1.0)
 COOL_RING = 3             # 1本だけ寒色にする（元動画の青紫のリング）
 
 
-def _ring(i, t):
-    """リング i の形状パラメータ（時刻 t で回転・開閉する）"""
+def _ring(i, t, aud):
+    """リング i の形状パラメータ（時刻 t で回転・開閉する。aud は low/mid/high の 0〜1.5）"""
     rng = random.Random(1000 + i)
     radius = 3.0 - i * 0.34
     y = i * 0.42
@@ -31,10 +31,15 @@ def _ring(i, t):
     speed = rng.uniform(0.18, 0.45) * (1 if i % 2 == 0 else -1)
     start = rng.uniform(0, 2 * math.pi) + t * speed
     sweep = math.pi * (0.95 + 0.6 * math.sin(t * rng.uniform(0.15, 0.35) + i * 1.7))
-    gain = rng.uniform(0.5, 1.2) * (0.5 if i == COOL_RING else 1.0)
+    # 音: 下の大きい輪ほど低域、上の小さい輪ほど高域に反応して弧が開き明るくなる
+    w = i / (N_RINGS - 1)
+    e = aud['low'] * (1 - w) + aud['high'] * w
+    sweep = min(1.9 * math.pi, sweep + 0.3 * math.pi * e)
+    gain = rng.uniform(0.5, 1.2) * (0.5 if i == COOL_RING else 1.0) * (1 + 0.35 * e)
     col = COOL if i == COOL_RING else WARM
     return dict(radius=radius, y=y, width=width, start=start, sweep=sweep,
-                gain=gain, col=col, dir=1 if speed > 0 else -1, seed=i)
+                gain=gain, col=col, dir=1 if speed > 0 else -1, seed=i,
+                fray=1 + 0.6 * aud['high'])
 
 
 def _xz(r, a, y):
@@ -94,7 +99,7 @@ def _plexus(op, R, angs, t):
         f = k / (len(angs) - 1)
         a = angs[k]
         wob = math.sin(t * 0.8 + k * 0.37 + R['seed'])
-        dr = rng.uniform(0.03, 0.28) * (0.4 + f) + 0.03 * wob
+        dr = (rng.uniform(0.03, 0.28) * (0.4 + f) + 0.03 * wob) * R['fray']
         dy = rng.uniform(-0.15, 0.15) * (0.3 + f)
         edge = _xz(r1, a, y)
         out = _xz(r1 + dr, a + rng.uniform(-0.04, 0.04), y + dy)
@@ -129,12 +134,25 @@ def _guides(op, t):
               [_scale(WARM, 0.15)] * (m + 1), closed=False)
 
 
+def _drive(scriptOp):
+    """build_audio.py の msp_drive（t/low/mid/high）を読む。無ければ時間駆動のみ"""
+    d = scriptOp.parent(2).op('msp_drive')
+    aud = {'low': 0.0, 'mid': 0.0, 'high': 0.0}
+    if d is None or d['t'] is None:
+        return absTime.seconds, aud
+    for k in aud:
+        if d[k] is not None:
+            aud[k] = float(d[k])
+    return float(d['t']), aud
+
+
 def onCook(scriptOp):
-    t = absTime.seconds * float(scriptOp.fetch('speed', 1.0))
+    t, aud = _drive(scriptOp)
+    t *= float(scriptOp.fetch('speed', 1.0))
     scriptOp.clear()
     scriptOp.pointAttribs.create('Cd')
     for i in range(N_RINGS):
-        R = _ring(i, t)
+        R = _ring(i, t, aud)
         angs = _ribbon(scriptOp, R)
         _plexus(scriptOp, R, angs, t)
     _guides(scriptOp, t)
