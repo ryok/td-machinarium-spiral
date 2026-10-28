@@ -12,6 +12,7 @@ r/TouchDesigner の「[Audiovisual - a Tribute to Machinarium](https://www.reddi
 |---|---|
 | `scripts/build_spiral.py` | `/project1` に `msp_*` ノード 20 個を組む。何度流しても同じネットワークになる |
 | `scripts/build_audio.py` | 音反応（`msp_aud*` / `msp_drive`）。`build_spiral` の後に実行 |
+| `scripts/build_recorder.py` | 曲の音と一緒に `msp_out` を録画（`msp_rec` / `msp_rec_ctl`） |
 | `scripts/spiral_geo.py` | Script SOP のコールバック。帯・網目・ほつれ・ガイド線を毎フレーム生成 |
 | `scripts/td_build.py` | ノード構築ヘルパ（td-organic-patterns の写し） |
 
@@ -67,7 +68,22 @@ g['build_audio'](audio_file='/path/to/song.mp3')    # ファイルをループ�
 - Script SOP で `pointAttribs.create('Cd', 既定値)` はエラー（標準属性に既定値は渡せない）。`create('Cd')` にする
 - Text TOP の位置は揃えの基準（左上）からのピクセルずれ
 
+## 録画
+
+```python
+P='/path/to/td-machinarium-spiral/scripts/build_recorder.py'
+g=dict(globals()); g['__file__']=P; exec(open(P).read(), g); g['build_recorder']()
+op('/project1/msp_rec_ctl').module.start(60.3)   # 曲の長さ（秒）。曲と回転の時刻を頭に戻してから録る
+```
+
+`reference/take_raw.mov`（MPEG-4 + MP3）に書き出す。SNS 用は H.264 / AAC に変換する:
+
+```bash
+ffmpeg -i reference/take_raw.mov -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart reference/take.mp4
+```
+
+Movie File Out はリアルタイムで書くので、録画中は TD で他の作業をしない（30fps を割るとコマ落ちする）。
+
 ## 今後
 
-- 実曲（Floex 系の静かな曲、自作曲）での反応量の調整
-- 録画（Movie File Out）
+- Floex 系の静かな曲での反応量の調整
