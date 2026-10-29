@@ -20,6 +20,8 @@ N_RINGS = 7
 WARM = (1.0, 0.72, 0.62)
 COOL = (0.62, 0.6, 1.0)
 COOL_RING = 3             # 1本だけ寒色にする（元動画の青紫のリング）
+# build_stems.py を使うとき、下の輪から順に割り当てるステム。寒色の輪（3）は声
+STEM_ORDER = ('kick', 'bass', 'groove', 'vox', 'filter', 'hits', 'hats')
 
 
 def _ring(i, t, aud):
@@ -31,11 +33,21 @@ def _ring(i, t, aud):
     speed = rng.uniform(0.18, 0.45) * (1 if i % 2 == 0 else -1)
     start = rng.uniform(0, 2 * math.pi) + t * speed
     sweep = math.pi * (0.95 + 0.6 * math.sin(t * rng.uniform(0.15, 0.35) + i * 1.7))
-    # 音: 下の大きい輪ほど低域、上の小さい輪ほど高域に反応して弧が開き明るくなる
-    w = i / (N_RINGS - 1)
-    e = aud['low'] * (1 - w) + aud['high'] * w
-    sweep = min(1.9 * math.pi, sweep + 0.3 * math.pi * e)
-    gain = rng.uniform(0.5, 1.2) * (0.5 if i == COOL_RING else 1.0) * (1 + 0.35 * e)
+    gain = rng.uniform(0.5, 1.2) * (0.5 if i == COOL_RING else 1.0)
+    stem = aud.get('stem')
+    if stem:
+        # ステム: 輪ごとに1パート。鳴っていない間（hold が 0）は輪が消えかけ、弧も縮む
+        e, hold = stem[i]
+        if i == COOL_RING:
+            gain *= 1.6      # 声の輪は元の寒色の暗さ（0.5倍）のままだと、鳴っても埋もれる
+        sweep = min(1.9 * math.pi, sweep * (0.3 + 0.7 * hold) + 0.3 * math.pi * e)
+        gain *= (0.06 + 0.94 * hold) * (1 + 0.35 * e)
+    else:
+        # 帯域: 下の大きい輪ほど低域、上の小さい輪ほど高域に反応して弧が開き明るくなる
+        w = i / (N_RINGS - 1)
+        e = aud['low'] * (1 - w) + aud['high'] * w
+        sweep = min(1.9 * math.pi, sweep + 0.3 * math.pi * e)
+        gain *= 1 + 0.35 * e
     col = COOL if i == COOL_RING else WARM
     return dict(radius=radius, y=y, width=width, start=start, sweep=sweep,
                 gain=gain, col=col, dir=1 if speed > 0 else -1, seed=i,
@@ -134,13 +146,27 @@ def _guides(op, t):
               [_scale(WARM, 0.15)] * (m + 1), closed=False)
 
 
+def _stems(p):
+    """build_stems.py の msp_stem（速い）と msp_stem_hold（鳴っているか）を輪の順に読む"""
+    s, h = p.op('msp_stem'), p.op('msp_stem_hold')
+    if s is None or h is None:
+        return None
+    out = []
+    for name in STEM_ORDER:
+        if s[name] is None or h[name] is None:
+            return None
+        out.append((float(s[name]), min(1.0, 2.0 * float(h[name]))))
+    return out
+
+
 def _drive(scriptOp):
     """build_audio.py の msp_drive（t/low/mid/high）を読む。無ければ時間駆動のみ"""
-    d = scriptOp.parent(2).op('msp_drive')
-    aud = {'low': 0.0, 'mid': 0.0, 'high': 0.0}
+    p = scriptOp.parent(2)
+    d = p.op('msp_drive')
+    aud = {'low': 0.0, 'mid': 0.0, 'high': 0.0, 'stem': _stems(p)}
     if d is None or d['t'] is None:
         return absTime.seconds, aud
-    for k in aud:
+    for k in ('low', 'mid', 'high'):
         if d[k] is not None:
             aud[k] = float(d[k])
     return float(d['t']), aud

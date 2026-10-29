@@ -29,10 +29,11 @@ OUT_FILE = os.path.join(os.path.dirname(HERE), 'reference', 'take_raw.mov')
 CTL = '''
 def start(dur):
     p = parent()
-    a = op('msp_aud_in')
-    a.par.cuepoint = 0
-    a.par.cuepulse.pulse()
-    a.par.play = True
+    # 曲と、build_stems のステム（msp_stemin_*）を同じフレームで頭に戻す
+    for a in [op('msp_aud_in')] + p.findChildren(name='msp_stemin_*', depth=1):
+        a.par.cuepoint = 0
+        a.par.cuepulse.pulse()
+        a.par.play = True
     op('msp_time').par.resetpulse.pulse()
     p.store('_rec', {'t0': absTime.seconds, 'dur': float(dur)})
     op('msp_rec').par.record = True

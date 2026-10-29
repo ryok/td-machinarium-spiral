@@ -12,7 +12,9 @@ r/TouchDesigner の「[Audiovisual - a Tribute to Machinarium](https://www.reddi
 |---|---|
 | `scripts/build_spiral.py` | `/project1` に `msp_*` ノード 20 個を組む。何度流しても同じネットワークになる |
 | `scripts/build_audio.py` | 音反応（`msp_aud*` / `msp_drive`）。`build_spiral` の後に実行 |
+| `scripts/build_stems.py` | 7本の輪を曲の7本のステムに1本ずつ割り当てる（`msp_stem*`）。`build_audio` の後に実行 |
 | `scripts/build_recorder.py` | 曲の音と一緒に `msp_out` を録画（`msp_rec` / `msp_rec_ctl`） |
+| `tools/stem_levels.py` | ステムごとの音量の基準（p95）を測って JSON に書く（TD の外で実行） |
 | `scripts/spiral_geo.py` | Script SOP のコールバック。帯・網目・ほつれ・ガイド線を毎フレーム生成 |
 | `scripts/td_build.py` | ノード構築ヘルパ（td-organic-patterns の写し） |
 
@@ -59,6 +61,32 @@ g['build_audio'](audio_file='/path/to/song.mp3')    # ファイルをループ�
 - 回転の速さを `absTime × 係数` で変えると、係数が変わった瞬間に位置が飛ぶ。速さを積分した時刻を使う
 - ハウスのデモ曲で 478 フレーム計測: 低域 p5=0.07 / p50=0.39 / p95=1.5。キックごとに 0.1 前後と 1.5 を往復する
 
+## ステム: 渦を曲のミックスにする
+
+帯域ではなく、曲のパート（ステム）を輪に1本ずつ割り当てるモード。曲を自分で組んでいてステムがあるときに使う。
+
+![左: 序盤（kick・bass・filter だけ） 中: 本編（vox の寒色の輪が入る） 右: ブレイク（kick・groove の輪が消える）](reference/stems_sections.png)
+
+| 輪（下から） | 0 | 1 | 2 | 3（寒色） | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| ステム | kick | bass | groove | vox | filter | hits | hats |
+
+```bash
+uv run --with numpy --with soundfile tools/stem_levels.py /path/to/stems --json reference/stem_levels_<song>.json
+```
+
+```python
+P='/path/to/td-machinarium-spiral/scripts/build_stems.py'
+g=dict(globals()); g['__file__']=P; exec(open(P).read(), g)
+g['build_stems'](stems_dir='/path/to/stems', levels='/path/to/td-machinarium-spiral/reference/stem_levels_<song>.json')
+```
+
+- 鳴っていないパートの輪は明るさ 6% まで落ち、弧も縮む（鳴り止んでから 1.5 秒かけて）。パートが入ると輪が現れ、ブレイクでドラムが抜けると下の輪が消える
+- 正規化は 6秒平均の自動ゲインではなく、曲全体の p95 で割る。自動ゲインだと、ブレイクで鳴っていないパートの残り音まで持ち上げてしまう
+- 左下の HUD は、ステム名と音量のバーの計器になる
+- 回転（中域）・ほつれ（高域）・にじみ（低域）は `build_audio` の全体ミックスのまま
+- summerline（auto-dtm）で録画: 1809 フレーム中 30 重複。録画中の TD のステム値を、ファイルから測った音量と相互相関で比べると、4 ステムとも同じずれ（-90ms）でステム同士はそろっていた。映像は音より約 40ms（30fps で約1コマ）遅れる見込み（録画の頭と動画の頭が同じ時刻という前提での推定）
+
 ## 調整の勘所
 
 - **塗りは先頭だけ**: 帯の塗りは進行方向の先頭付近だけにし、残りは網目（内縁・ゆらぐ中段・外縁の3列）で見せる。塗りが長いと、手前に来た帯がのっぺりした板になる
@@ -87,3 +115,4 @@ Movie File Out はリアルタイムで書くので、録画中は TD で他の�
 ## 今後
 
 - Floex 系の静かな曲での反応量の調整
+- ステムモードで filter の LPF スウィープ（明るさの変化）をにじみの色温度に使う

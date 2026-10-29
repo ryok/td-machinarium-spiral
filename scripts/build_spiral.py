@@ -39,13 +39,22 @@ def _gib(n):
     return ''.join(random.choice(CH) if random.random() > 0.35 else
                    random.choice(' *\\u00b7') for _ in range(n))
 
+def _meter():
+    # build_stems.py があれば、左下の塊をステムの計器にする（名前と音量のバー）
+    s = op('msp_stem')
+    if s is None or s.numChans == 0:
+        return None
+    return '\\n'.join('%-6s %s' % (c.name, '|' * int(min(1.5, c.eval()) * 8))
+                      for c in s.chans())
+
 def onFrameStart(frame):
     op('msp_geo/msp_sop').cook(force=True)
     if frame % 4 == 0:
         for i, rows in enumerate(((7, 9), (12, 8, 6, 2), (5, 3, 6))):
             t = op('msp_txt%d' % i)
             if t is not None:
-                t.par.text = '\\n'.join(_gib(n) for n in rows)
+                m = _meter() if i == 1 else None
+                t.par.text = m or '\\n'.join(_gib(n) for n in rows)
     return
 '''
 
